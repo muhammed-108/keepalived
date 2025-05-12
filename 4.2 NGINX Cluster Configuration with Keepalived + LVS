@@ -1,0 +1,112 @@
+4.2.3 Procedure
+Step 1 Install Keepalived and ipvsadm on LVS1 and LVS2 ECSs.
+Run the following command:
+yum install -y keepalived ipvsadm
+
+Step 2 Modify the configuration file of LVS1.
+Modify the Keepalived configuration file of LVS1 as follows:
+! Configuration File for keepalived
+global_defs {
+ router_id Cluster1
+}
+vrrp_instance Nginx {
+ state MASTER
+ interface ens192
+ mcast_src_ip 20.0.0.1
+ virtual_router_id 51
+ priority 255
+ advert_int 1
+ authentication {
+ auth_type PASS
+ auth_pass 1111
+ }
+ virtual_ipaddress {
+ 192.168.1.20/24
+ }
+}
+virtual_server 192.168.1.20 80 {
+ delay_loop 6
+ lb_algo rr
+ lb_kind DR
+ persistence_timeout 50
+ protocol TCP
+ real_server 192.168.1.14 80 {
+ weight 1
+ TCP_CHECK {
+ connect_timeout 3
+ retry 3
+ delay_before_retry 3
+ }
+ }
+ real_server 192.168.1.15 80 {
+ weight 2
+ TCP_CHECK {
+ connect_timeout 3
+ retry 3
+ delay_before_retry 3
+ }
+ }
+}
+
+
+Step 3 Modify the configuration file of LVS2.
+Modify the Keepalived configuration file of LVS2 as follows:
+
+! Configuration File for keepalived
+global_defs {
+ router_id Cluster2
+}
+vrrp_instance Nginx {
+ state BACKUP
+ interface ens192
+ mcast_src_ip 20.0.0.2
+ virtual_router_id 51
+ priority 100
+ advert_int 1
+ authentication {
+ auth_type PASS
+ auth_pass 1111
+ }
+ virtual_ipaddress {
+ 192.168.1.20/24
+ }
+}
+virtual_server 192.168.1.20 80 {
+ delay_loop 6
+ lb_algo rr
+ lb_kind DR
+ persistence_timeout 50
+ protocol TCP
+ real_server 192.168.1.14 80 {
+ weight 1
+ TCP_CHECK {
+ connect_timeout 3
+ retry 3
+ delay_before_retry 3
+ }
+ }
+ real_server 192.168.1.15 80 {
+ weight 2
+ TCP_CHECK {
+ connect_timeout 3
+ retry 3
+ delay_before_retry 3
+ }
+ }
+}
+
+Step 4 Perform a test.
+After the two LVS servers are configured, restart them and perform an access test on the
+client. The result is as follows:
+curl 192.168.1.20
+curl 192.168.1.20
+curl 192.168.1.20
+curl 192.168.1.20
+
+
+
+As shown in the preceding figure, LVS connections are configured as persistent
+connections by default, and the timeout interval is set to 50. Therefore, each request is
+forwarded to the server allocated for the first time. You can comment out related
+configurations in the Keepalived configuration file to implement load balancing. See the
+following figure.
