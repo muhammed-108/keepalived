@@ -1,0 +1,128 @@
+Step 1 Install Keepalived.
+Run the following command on Nginx1 and Nginx2 to install Keepalived:
+yum install -y keepalived
+
+
+Step 2 Check the network configurations of Nginx1 and Nginx2.
+On Nginx1, ping Nginx2. If the network connection is normal, the following information
+is displayed:
+
+
+Step 3 Configure Keepalived.
+In this lab, Nginx1 is configured as the master node and Nginx2 is configured as the
+backup node. Modify the Keepalived configuration file
+(/etc/keepalived/keepalived.conf) on Nginx1 as follows:
+! Configuration File for keepalived
+global_defs {
+ router_id Nginx1
+}
+vrrp_instance Nginx {
+ state MASTER
+ interface ens192
+ virtual_router_id 51
+ priority 225
+ advert_int 1
+ authentication {
+ auth_type PASS
+ auth_pass Huawei@1
+ }
+ virtual_ipaddress {
+ 192.168.1.20/24
+ }
+}
+Modify the Keepalived configuration file of Nginx2 as follows:
+! Configuration File for keepalived
+global_defs {
+ router_id Nginx2
+}
+vrrp_instance Nginx {
+ state BACKUP
+ interface ens192
+ virtual_router_id 51
+ priority 100
+ advert_int 1
+ authentication {
+ auth_type PASS
+ auth_pass Huawei@1
+ }
+ virtual_ipaddress {
+ 192.168.1.20/24
+ }
+}
+After the configuration is complete, run the following command on Nginx1 and Nginx2
+to restart the Keepalived service:
+systemctl restart keepalived
+Check whether a floating IP address is generated on Nginx1, as shown in the following
+figure.
+ip addr | grep 192
+
+
+Step 4 Perform a test.
+curl 192.168.1.20
+curl 192.168.1.20:81
+On the client, use the floating IP address to access the NGINX service. The result shows
+that Nginx1 responds to all the requests and returns the corresponding contents.
+Shut down Nginx1 and use the floating IP address to access NGINX again. The result is as
+follows:
+
+The floating IP address floats to Nginx2, as shown in the following figure.
+ip add | grep 192
+
+
+Step 5 Configure a health check.
+Currently, Keepalived can switch services only based on whether the master node breaks
+down. If only the NGINX service is faulty, Keepalived cannot switch services. Therefore,
+configure a health check in Keepalived to check whether NGINX is available.
+Start Nginx1 that is shut down in step 4 and add health check configurations to the
+Keepalived configuration files of Nginx1 and Nginx2. The details are as follows:
+global_defs {
+ router_id Nginx1
+}
+vrrp_script nginx_check {
+ script "/etc/keepalived/check.sh"
+ interval 1
+ weight -5
+ fail 3
+} 
+vrrp_instance Nginx {
+……
+track_script {
+ nginx_check
+}
+}
+
+
+Create a check.sh script for checking NGINX service status in /etc/keepalived on the two
+NGINX servers. The script contents are as follows. Note: To prevent errors, do not directly
+copy and paste the following contents.
+#!/bin.bash
+systemctl status nginx | grep "active (running)" > /dev/null
+if [ $? -ne 0 ]; then
+ systemctl restart nginx &> /dev/null
+ sleep 1
+ systemctl status nginx | grep "active (running)" > /dev/null
+ if [ $? -ne 0 ]; then
+ systemctl stop keepalived
+ else
+ exit
+ fi
+fi
+
+
+
+
+Step 6 Perform a test.
+After the configuration is complete, run the systemctl restart keepalived command to
+restart the service. Modify the NGINX configuration file on Nginx1 so that the NGINX
+process cannot be started properly (for example, rename the nginx.conf file
+nginx.conf.bk). Then manually stop the NGINX service.
+[root@Nginx1 ~]# mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bk
+[root@Nginx1 ~]# systemctl stop nginx
+Run the systemctl start nginx command and ensure that NGINX cannot be started, as
+shown in the following figure.
+
+
+Perform the test on the client. It shows that Nginx2 provides services.
+curl 192.168.1.20
+curl 192.168.1.20:81
+curl 192.168.1.20:82
